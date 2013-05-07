@@ -26,7 +26,7 @@ try: #this is the old-style import - below is for traits 4.x
                                      TraitError,Undefined,DelegatesTo
     from enthought.traits.ui.api import View,Handler,Item,Label,Group,VGroup, \
                                         HGroup, InstanceEditor,EnumEditor, \
-                                        ListEditor, TupleEditor,spring
+                                        ListEditor, TupleEditor, RangeEditor, spring
     from enthought.traits.ui.menu import ModalButtons
     from enthought.chaco.api import Plot,ArrayPlotData,jet,ColorBar,HPlotContainer,\
                                     ColorMapper,LinearMapper,ScatterInspectorOverlay,\
@@ -49,7 +49,7 @@ except ImportError:
                                      TraitError,Undefined,DelegatesTo
     from traitsui.api import View,Handler,Item,Label,Group,VGroup, \
                                         HGroup, InstanceEditor,EnumEditor, \
-                                        ListEditor, TupleEditor,spring
+                                        ListEditor, TupleEditor, RangeEditor, spring
     from traitsui.menu import ModalButtons
     from chaco.api import Plot,ArrayPlotData,jet,ColorBar,HPlotContainer,\
                                     ColorMapper,LinearMapper,ScatterInspectorOverlay,\
@@ -172,6 +172,11 @@ class TraitedModel(HasTraits):
                 setattr(self,name,par)
                 self.on_trait_change(self._param_change_handler,name)
                 gi.content.append(Item(name,show_label=False))
+
+                #self.add_trait(name+"_slider",RangeEditor)
+                #setattr(self,name+"_slider",(par-10,par,par+10))
+                #self.on_trait_change(self._param_change_handler,name+"_slider")
+                #gi.content.append(Item(name+"_slider",show_label=False))
 
                 ffp = 'fixfit_'+name
                 self.add_trait(ffp,Bool)
