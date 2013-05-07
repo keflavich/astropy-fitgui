@@ -13,3 +13,7 @@ To do:
  * allow plotter to be in another window (e.g., for aplpy or pyspeckit, don't
    muck with the plotting tools at all, just provide an interface to fit and
    modify the model)
+
+ * Create GUI-based model builder for initializing, e.g., polynomial models,
+   N-gaussian models, etc.
+     * currently, not very easy to make a generic model for fitting

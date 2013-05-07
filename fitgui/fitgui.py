@@ -1,4 +1,4 @@
-#Copyright 2009 Erik Tollerud
+#Copyright 2009 Erik Tollerud, 2013 Adam Ginsburg
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -69,13 +69,15 @@ except ImportError:
 
 
 from astropy.modeling.models import Gaussian1DModel as astroG1D
-from astropy.modeling.fitting import NonLinearLSQFitter
+from astropy.modeling.fitting import NonLinearLSQFitter,SLSQPFitter,LinearLSQFitter
+linear_fitters = [LinearLSQFitter]
+nonlinear_fitters = [NonLinearLSQFitter,SLSQPFitter,]
 
+# Models must be initialized with values; can't depend on the user to set them
 class Gaussian1DModel(astroG1D):
     def __init__(self, amplitude=1, mean=0, stddev=1, *args, **kwargs):
         super(Gaussian1DModel, self).__init__(amplitude, mean, stddev=stddev, *args,**kwargs)
-    fittypes = [NonLinearLSQFitter]
-    fittype = NonLinearLSQFitter
+
 
 FunctionModel1D = Gaussian1DModel
 # trivial placeholder models to get gui working
@@ -138,8 +140,8 @@ class TraitedModel(HasTraits):
     updatetraitparams = Event
     paramchange = Event
     fitdata = Event
-    fittype = Property(Str)
-    fittypes = Property
+    fittype = Property
+    fitters = Property
     lastfitfailure = Instance(Exception,allow_none=True)
 
     def __init__(self,model,**traits):
@@ -153,7 +155,7 @@ class TraitedModel(HasTraits):
             model = model()
         self.model = model
         if self.model is not None:
-            self.fitter = self.model.fittype(self.model)
+            self.fittype = self.fitters[0]
 
     def default_traits_view(self):
         if self.model is None:
@@ -162,8 +164,10 @@ class TraitedModel(HasTraits):
         else:
             #g = Group(label=self.modelname,show_border=False,orientation='horizontal',layout='flow')
             g = Group(label=self.modelname,show_border=True,orientation='vertical')
+
+            # how do you set a default fit technique *here*?
             hg = HGroup(Item('fittype',label='Fit Technique',
-                             editor=EnumEditor(name='fittypes')))
+                             editor=EnumEditor(name='fitters')))
             g.content.append(hg)
             gp = HGroup(scrollable=True)
             for name,par in zip(self.model.param_names,self.model.parameters):
@@ -194,8 +198,6 @@ class TraitedModel(HasTraits):
     def _param_change_handler(self,name,new):
         setattr(self.model,name,new)
         self.paramchange = name
-        if self.model is not None:
-            self.fitter = self.model.fittype(self.model)
 
     def _updatetraitparams_fired(self):
         m = self.model
@@ -262,13 +264,22 @@ class TraitedModel(HasTraits):
         if self.model is None:
             return None
         else:
-            return self.model.fittype
+            if hasattr(self.model,'fitter'):
+                return self.model.fitter
+            else:
+                self._set_fitter(self.fitters[0])
+                return self.model.fitter
 
     def _set_fittype(self,val):
-        self.model.fittype = val
+        if self.model is not None:
+            self.model.fitter = val(self.model)
+            self.fitter = val(self.model)
 
-    def _get_fittypes(self):
-        return self.model.fittypes
+    def _get_fitters(self):
+        if self.model.linear:
+            return linear_fitters
+        else:
+            return nonlinear_fitters
 
 class NewModelSelector(HasTraits):
     modelnames = List
@@ -484,7 +495,7 @@ class FitGui(HasTraits):
 
 
     def __init__(self,xdata=None,ydata=None,weights=None,model=None,
-                 include_models=None,exclude_models=None,fittype=None,**traits):
+                 include_models=None,exclude_models=None,fitter=None,**traits):
         """
 
         :param xdata: the first dimension of the data to be fit
@@ -512,10 +523,10 @@ class FitGui(HasTraits):
         :param exclude_models:
             With `include_models`, specifies which models should be available in
             the "new model" dialog (see `models.list_models` for syntax).
-        :param fittype:
+        :param fitter:
             The fitting technique for the initial fit (see
             :class:`pymodelfit.core.FunctionModel`).
-        :type fittype: string
+        :type fitter: string
 
         kwargs are passed in as any additional traits to apply to the
         application.
@@ -526,8 +537,8 @@ class FitGui(HasTraits):
 
         self.tmodel = TraitedModel(model)
 
-        if model is not None and fittype is not None:
-            self.tmodel.model.fittype = fittype
+        if model is not None and fitter is not None:
+            self.tmodel.model.fitter = fittype
 
         if xdata is None or ydata is None:
             if not hasattr(self.tmodel.model,'data') or self.tmodel.model.data is None:
@@ -1065,7 +1076,7 @@ def fit_data(*args,**kwargs):
 
     >>> from numpy import tile
     >>> from numpy.random import randn,rand
-    >>> fit_data(randn(100),randn(100),'linear',weights=tile(rand(100),2).reshape((2,10)),fittype='yerr') #doctest: +SKIP
+    >>> fit_data(randn(100),randn(100),'linear',weights=tile(rand(100),2).reshape((2,10)),fitter='yerr') #doctest: +SKIP
 
     This will bring up 100 normally-distributed points with a linear model with
     the points weighted by a uniform random number (interpreted as inverse

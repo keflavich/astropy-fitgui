@@ -9,6 +9,8 @@ y = randn(100) + 10*np.exp(-(x-20)**2/5.)
 #fd = fitgui.fit_data(x,y)
 fg = fitgui.FitGui(x,y)#,**kwargs)
 fg.modelselector.trait_set(selectedname='Gaussian1DModel')
+fg.tmodel.fittype = fitgui.NonLinearLSQFitter
+#fg.tmodel._update_traitparams_fired(
 fg._newmodel_fired(fitgui.Gaussian1DModel)
 fg.tmodel.model.mean=21
 fg.tmodel.model.amplitude=2
