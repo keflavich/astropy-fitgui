@@ -10,3 +10,6 @@ To do:
  * deal with higher-dimensional models (e.g., WCS fitting - one of the key use cases to replace IRAF's fitcoords)
     * would be nice to show residuals as vector fields in this particular case
  * expose the matplotlib plotting tools within FitGui so that users can modify appearance of plots 
+ * allow plotter to be in another window (e.g., for aplpy or pyspeckit, don't
+   muck with the plotting tools at all, just provide an interface to fit and
+   modify the model)
