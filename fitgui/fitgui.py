@@ -68,8 +68,27 @@ except ImportError:
 
 
 
-from .core import FunctionModel1D,list_models,get_model_class,get_model_instance
-from .utils import binned_weights
+from astropy.modeling.models import Gaussian1DModel as astroG1D
+from astropy.modeling.fitting import NonLinearLSQFitter
+
+class Gaussian1DModel(astroG1D):
+    def __init__(self, amplitude=1, mean=0, stddev=1, *args, **kwargs):
+        super(Gaussian1DModel, self).__init__(amplitude, mean, stddev=stddev, *args,**kwargs)
+    fittypes = [NonLinearLSQFitter]
+    fittype = NonLinearLSQFitter
+
+FunctionModel1D = Gaussian1DModel
+# trivial placeholder models to get gui working
+def list_models(*args):
+    return ['Gaussian1DModel']
+def get_model_class(*args):
+    return Gaussian1DModel
+def get_model_instance(*args, **kwargs):
+    return Gaussian1DModel(*args, **kwargs)
+#from .core import FunctionModel1D,list_models,get_model_class,get_model_instance
+#from .utils import binned_weights
+def binned_weights(x):
+    return x 
 
 class ColorMapperFixSingleVal(ColorMapper):
     coloratval = ColorTrait('black')
@@ -113,7 +132,6 @@ def _cmap(range, **traits):
     return ColorMapper.from_segment_map(_data, range=range, **traits)
 
 class TraitedModel(HasTraits):
-    from inspect import isclass
 
     model = Instance(FunctionModel1D,allow_none=True)
     modelname = Property(Str)
@@ -134,6 +152,8 @@ class TraitedModel(HasTraits):
         elif isclass(model):
             model = model()
         self.model = model
+        if self.model is not None:
+            self.fitter = self.model.fittype(self.model)
 
     def default_traits_view(self):
         if self.model is None:
@@ -146,17 +166,18 @@ class TraitedModel(HasTraits):
                              editor=EnumEditor(name='fittypes')))
             g.content.append(hg)
             gp = HGroup(scrollable=True)
-            for p in self.model.params:
-                gi = Group(orientation='horizontal',label=p)
-                self.add_trait(p,Float)
-                setattr(self,p,getattr(self.model,p))
-                self.on_trait_change(self._param_change_handler,p)
-                gi.content.append(Item(p,show_label=False))
+            for name,par in zip(self.model.param_names,self.model.parameters):
+                gi = Group(orientation='horizontal',label=name)
+                self.add_trait(name,Float)
+                setattr(self,name,par)
+                self.on_trait_change(self._param_change_handler,name)
+                gi.content.append(Item(name,show_label=False))
 
-                ffp = 'fixfit_'+p
+                ffp = 'fixfit_'+name
                 self.add_trait(ffp,Bool)
-                #default to fixed if the paramtere is a class-level fixed model
-                setattr(self,ffp,p in self.model.__class__.fixedpars)
+                #default to fixed if the parameter is a class-level fixed model
+                # *NOTE this does NOT check for class-level fixedness now
+                setattr(self,ffp,getattr(self.model,name).fixed)
                 self.on_trait_change(self._param_change_handler,ffp)
                 gi.content.append(Item(ffp,label='Fix?'))
 
@@ -168,11 +189,13 @@ class TraitedModel(HasTraits):
     def _param_change_handler(self,name,new):
         setattr(self.model,name,new)
         self.paramchange = name
+        if self.model is not None:
+            self.fitter = self.model.fittype(self.model)
 
     def _updatetraitparams_fired(self):
         m = self.model
-        for p in m.params:
-            setattr(self,p,getattr(m,p))
+        for p,v in zip(m.param_names,m.parameters):
+            setattr(self,p,v)
         self.paramchange = True
 
     def _fitdata_fired(self,new):
@@ -202,10 +225,23 @@ class TraitedModel(HasTraits):
             else:
                 raise ValueError('unusable fitdata event input')
 
+            # set up fixed data...
+            for parname in self.model.param_names:
+                getattr(self.model,parname).fixed = False
             if 'fixedpars' not in kw:
-                 kw['fixedpars'] = [tn.replace('fixfit_','') for tn in self.traits() if tn.startswith('fixfit_') if getattr(self,tn)]
+                fixedpars = [tn.replace('fixfit_','') for tn in
+                        self.traits() if tn.startswith('fixfit_') if
+                        getattr(self,tn)]
+            else:
+                fixedpars = kw.pop('fixedpars')
+
+            for tn in fixedpars:
+                if tn.startswidth('fixfit_') and getattr(self,tn):
+                    getattr(self.model,tn.replace("fixit_","")).fixed = True
+
             try:
-                self.model.fitData(**kw)
+                self.fitter(**kw)
+                #self.model.fitData(**kw)
                 self.updatetraitparams = True
                 self.lastfitfailure = None
             except Exception,e:
@@ -260,6 +296,7 @@ class NewModelSelector(HasTraits):
         if cls is None:
             return False
         else:
+            return False
             return cls.isVarnumModel()
 
 #class WeightFillOverlay(AbstractOverlay):
@@ -628,7 +665,7 @@ class FitGui(HasTraits):
                 self.plot.data.set_data('xmod',[])
                 self.plot.data.set_data('ymod',[])
                 #residuals set the ydata instead of setting the model
-                res = mod.residuals(*self.data)
+                res = self.data[1] - self.tmodel.model(self.data[0])
                 self.plot.data.set_data('ydata',res)
             else:
                 self.ytype = 'data and model'
@@ -955,11 +992,11 @@ class FitGui(HasTraits):
             return 'None'
         else:
             parstrs = []
-            for p,v in mod.pardict.iteritems():
+            for p,v in zip(mod.param_names,mod.parameters): #mod.pardict.iteritems():
                 parstrs.append(p+'='+str(v))
-            if mod.__class__._pars is None: #varargs need to have the first argument give the right number
-                varcount = len(mod.params)-len(mod.__class__._statargs)
-                parstrs.insert(0,str(varcount))
+            #if mod.__class__._pars is None: #varargs need to have the first argument give the right number
+            #    varcount = len(mod.parameters)#-len(mod.__class__._statargs)
+            #    parstrs.insert(0,str(varcount))
             return '%s(%s)'%(mod.__class__.__name__,','.join(parstrs))
 
     def getModelObject(self):
